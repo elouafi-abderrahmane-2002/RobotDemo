@@ -1,167 +1,193 @@
-====================
-Robot Framework Demo
-====================
+# 🤖 Robot Framework Demo — Keyword-Driven, Data-Driven & Gherkin
 
-`Robot Framework`_ is a generic open source test automation framework.
-In addition to introducing Robot Framework test data syntax, this demo
-shows how to execute test cases, how generated reports and logs
-look like, and how to extend the framework with custom test libraries.
+Robot Framework est un framework d'automatisation générique — mais la façon
+dont on structure les tests change tout. Ce projet démontre trois approches
+différentes sur la même application cible (une calculatrice Python), chacune
+adaptée à un contexte différent.
 
-.. contents:: **Contents:**
-   :depth: 1
-   :local:
+---
 
-Downloading demo package
-========================
+## Les trois approches de test
 
-To get the demo, you can either `download`_ and extract the latest
-package from the GitHub or checkout the `source code`_ directly.
-As a result you get ``RobotDemo`` directory with several files.
+```
+  Application testée : Calculator (Python)
+          │
+          ├── keyword_driven.robot    ← tests structurés par mots-clés
+          ├── data_driven.robot       ← même test, données multiples
+          ├── gherkin.robot           ← BDD Given/When/Then
+          └── CalculatorLibrary.py    ← bibliothèque de mots-clés custom
+```
 
-Example `test cases`_, `test library`_ used by them, and `generated results`_
-are available also online. Therefore, you do not need to download the demo if
-you are not interested in `running it`__ yourself.
+---
 
-__ `running demo`_
+## Approche 1 : Keyword-Driven
 
-Demo application
-================
+Chaque action métier est encapsulée dans un mot-clé réutilisable.
 
-The demo application is a very simple calculator implemented with Python
-(`calculator.py`_). It contains only business logic and no user interface.
-You cannot really run the calculator manually.
+```robotframework
+*** Settings ***
+Library    CalculatorLibrary
 
-Test cases
-==========
+*** Test Cases ***
+Addition Should Work
+    [Documentation]    Vérifie que l'addition de deux entiers est correcte
+    Push Button    1
+    Push Button    +
+    Push Button    2
+    Push Button    =
+    Result Should Be    3
 
-The demo contains three different test case files illustrating three different
-approaches for creating test cases with Robot Framework. Click file names below
-to see the latest versions online.
+Division By Zero Should Fail
+    [Documentation]    Vérifie que la division par zéro lève une erreur
+    Push Button    6
+    Push Button    /
+    Push Button    0
+    Push Button    =
+    Should Be Error    Cannot divide by zero
 
-`keyword_driven.robot`_
-    Example test cases using the *keyword-driven* testing approach.
+*** Keywords ***
+Result Should Be
+    [Arguments]    ${expected}
+    ${result}=    Get Result
+    Should Be Equal As Numbers    ${result}    ${expected}
+```
 
-    All tests contain a workflow constructed from keywords in
-    `CalculatorLibrary.py`_. Creating new tests or editing
-    existing is easy even for people without programming skills.
+---
 
-    The *keyword-driven* approach works well for normal test
-    automation, but the *gherkin* style might be even better
-    if also business people need to understand tests. If the
-    same workflow needs to repeated multiple times, it is best
-    to use to the *data-driven* approach.
+## Approche 2 : Data-Driven
 
-`data_driven.robot`_
-    Example test cases using the *data-driven* testing approach.
+Un seul cas de test exécuté avec de multiples jeux de données — idéal pour
+tester des règles métier sur de nombreuses combinaisons.
 
-    The *data-driven* style works well when you need to repeat
-    the same workflow multiple times.
+```robotframework
+*** Settings ***
+Library           CalculatorLibrary
+Test Template     Calculate
 
-    Tests use ``Calculate`` keyword created in this file, that in
-    turn uses keywords in `CalculatorLibrary.py`_. An exception
-    is the last test that has a custom *template keyword*.
+*** Test Cases ***       EXPRESSION    EXPECTED
+Addition simple          1 + 2         3
+Addition négative        -1 + -2       -3
+Soustraction             10 - 3        7
+Multiplication           4 * 5         20
+Division entière         10 / 2        5
+Priorité opérateurs      2 + 3 * 4     14
+Grand nombre             999 + 1       1000
 
-`gherkin.robot`_
-    Example test case using the *gherkin* syntax.
+*** Keywords ***
+Calculate
+    [Arguments]    ${expression}    ${expected}
+    ${result}=    Evaluate Expression    ${expression}
+    Should Be Equal As Numbers    ${result}    ${expected}
+```
 
-    This test has a workflow similar to the *keyword-driven*
-    examples. The difference is that the keywords use higher
-    abstraction level and their arguments are embedded into
-    the keyword names.
+---
 
-    This kind of *gherkin* syntax has been made popular by Cucumber_.
-    It works well especially when tests act as examples that need to
-    be easily understood also by the business people.
+## Approche 3 : BDD Gherkin
 
-As you can see, creating test cases with Robot Framework is very easy.
-See `Robot Framework User Guide`_ for details about the test data syntax.
+Collaboration entre équipes techniques et métier — les scénarios sont lisibles
+par tous, pas seulement par les développeurs.
 
-Test library
-============
+```robotframework
+*** Settings ***
+Library    CalculatorLibrary
 
-All test cases interact with the calculator using a custom test library named
-`CalculatorLibrary.py`_. In practice the library is just a Python class
-with methods that create the keywords used by the test cases.
+*** Test Cases ***
+Addition de deux nombres positifs
+    Given une calculatrice vide
+    When je saisie    2
+    And  je saisie    +
+    And  je saisie    3
+    And  j appuie sur égal
+    Then le résultat doit être    5
 
-Generated library documentation makes it easy to see what keywords the
-library provides. This documentation is created with Libdoc_ tool integrated
-with the framework:
+Division par zéro est rejetée
+    Given une calculatrice vide
+    When je saisie    5
+    And  je saisie    /
+    And  je saisie    0
+    And  j appuie sur égal
+    Then une erreur doit s afficher    Cannot divide by zero
 
-- `CalculatorLibrary.html`_
+*** Keywords ***
+une calculatrice vide
+    Reset Calculator
 
-As you can see, Robot Framework's test library API is very simple.
-See `Robot Framework User Guide`_ for more information about creating test
-libraries, using Libdoc, and so on.
+je saisie
+    [Arguments]    ${input}
+    Push Button    ${input}
 
-Generated results
-=================
+j appuie sur égal
+    Push Button    =
 
-After `running tests`_, you will get report and log in HTML format. Example
-files are also visible online in case you are not interested in running
-the demo yourself. Notice that one of the test has failed on purpose to
-show how failures look like.
+le résultat doit être
+    [Arguments]    ${expected}
+    ${result}=    Get Result
+    Should Be Equal As Numbers    ${result}    ${expected}
 
-- `report.html`_
-- `log.html`_
+une erreur doit s afficher
+    [Arguments]    ${message}
+    ${error}=    Get Error
+    Should Contain    ${error}    ${message}
+```
 
-Running demo
-============
+---
 
-Preconditions
--------------
+## Bibliothèque custom Python
 
-A precondition for running the tests is having `Robot Framework`_ installed.
-It is most commonly used on Python_ but it works also with Jython_ (JVM)
-and IronPython_ (.NET). Robot Framework `installation instructions`_
-cover installation procedure in detail. People already familiar with
-installing Python packages and having `pip`_ package manager installed, can
-simply run the following command::
+```python
+# CalculatorLibrary.py
+from robot.api.deco import keyword
 
-    pip install robotframework
+class CalculatorLibrary:
+    """Bibliothèque Robot Framework pour tester une calculatrice Python."""
 
-Robot Framework 3.0 and newer support Python 3 in addition to Python 2. Also
-this demo project is nowadays Python 3 compatible.
+    def __init__(self):
+        self._calc = Calculator()
 
-Running tests
--------------
+    @keyword("Push Button")
+    def push_button(self, button: str):
+        """Simule l'appui sur un bouton de la calculatrice."""
+        self._calc.push(button)
 
-Test cases are executed with the ``robot`` command::
+    @keyword("Get Result")
+    def get_result(self) -> float:
+        """Retourne le résultat affiché."""
+        return self._calc.result
 
-    robot keyword_driven.robot
+    @keyword("Reset Calculator")
+    def reset(self):
+        """Remet la calculatrice à zéro."""
+        self._calc.reset()
+```
 
-.. note:: If you are using Robot Framework 2.9 or earlier, you need to
-          use Python interpreter specific command ``pybot``, ``jybot`` or
-          ``ipybot`` instead.
+---
 
-To execute all test case files in a directory recursively, just give the
-directory as an argument. You can also give multiple files or directories in
-one go and use various command line options supported by Robot Framework.
-The results `available online`__ were created using the following command::
+## Lancer les tests
 
-    robot --name Robot --loglevel DEBUG keyword_driven.robot data_driven.robot gherkin.robot
+```bash
+git clone https://github.com/elouafi-abderrahmane-2002/robotframework-demo.git
+cd robotframework-demo
+pip install robotframework
 
-Run ``robot --help`` for more information about the command line usage and see
-`Robot Framework User Guide`_ for more details about test execution in general.
+robot keyword_driven.robot
+robot data_driven.robot
+robot gherkin.robot
+robot --outputdir results .         # tous les tests + rapport HTML
+```
 
-__ `Generated results`_
+---
 
+## Ce que j'ai appris
 
-.. _Robot Framework: http://robotframework.org
-.. _download: https://github.com/robotframework/RobotDemo/archive/master.zip
-.. _source code: https://github.com/robotframework/RobotDemo.git
-.. _calculator.py: https://github.com/robotframework/RobotDemo/blob/master/calculator.py
-.. _keyword_driven.robot: https://github.com/robotframework/RobotDemo/blob/master/keyword_driven.robot
-.. _CalculatorLibrary.py: https://github.com/robotframework/RobotDemo/blob/master/CalculatorLibrary.py
-.. _data_driven.robot: https://github.com/robotframework/RobotDemo/blob/master/data_driven.robot
-.. _gherkin.robot: https://github.com/robotframework/RobotDemo/blob/master/gherkin.robot
-.. _Cucumber: https://cucumber.io/
-.. _Robot Framework User Guide: http://robotframework.org/robotframework/#user-guide
-.. _Python: http://python.org
-.. _Jython: http://jython.org
-.. _IronPython: http://ironpython.net
-.. _pip: http://pip-installer.org
-.. _installation instructions: https://github.com/robotframework/robotframework/blob/master/INSTALL.rst
-.. _Libdoc: http://robotframework.org/robotframework/#built-in-tools
-.. _CalculatorLibrary.html: http://robotframework.org/RobotDemo/CalculatorLibrary.html
-.. _report.html: http://robotframework.org/RobotDemo/report.html
-.. _log.html: http://robotframework.org/RobotDemo/log.html
+L'approche **data-driven** est souvent sous-estimée. Sur un cas comme la calculatrice,
+tester 7 combinaisons avec un seul cas de test (au lieu de 7 tests séparés) divise
+par 7 le code à maintenir. Si la logique du test change, on modifie un seul endroit.
+
+Le **BDD/Gherkin** n'est utile que si les scénarios sont vraiment rédigés avec
+les parties prenantes métier. Si seuls les développeurs les lisent, keyword-driven
+est plus efficace. Le choix dépend de qui valide les tests — pas de la technologie.
+
+---
+
+*Projet réalisé dans le cadre de ma formation ingénieur — ENSET Mohammedia*
+*Par **Abderrahmane Elouafi** · [LinkedIn](https://www.linkedin.com/in/abderrahmane-elouafi-43226736b/) · [Portfolio](https://my-first-porfolio-six.vercel.app/)*
