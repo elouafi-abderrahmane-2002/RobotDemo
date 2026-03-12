@@ -1,195 +1,191 @@
-# 🖥️ Desktop Automation — WinAppDriver + Robot Framework
+# 🤖 Robot Framework Demo — Keyword-Driven, Data-Driven & Gherkin
 
-Tester une application .NET (WinForms, WPF, UWP) automatiquement, c'est possible
-avec WinAppDriver — le service Microsoft qui expose une API WebDriver pour les
-applications Windows. Combiné avec Robot Framework et DesktopLibrary, on obtient
-un framework de test desktop lisible, maintenable et intégrable en CI/CD.
+Robot Framework est un framework d'automatisation générique — mais la façon
+dont on structure les tests change tout. Ce projet démontre trois approches
+différentes sur la même application cible (une calculatrice Python), chacune
+adaptée à un contexte différent.
 
 ---
 
-## Architecture du setup
+## Les trois approches de test
 
 ```
-  Application .NET testée (WinForms / WPF / UWP)
+  Application testée : Calculator (Python)
           │
-          │  UIAutomation API (Windows)
-          ▼
-  ┌───────────────────────────────────────────────┐
-  │              WinAppDriver.exe                 │
-  │         (écoute sur port 4723)                │
-  │                                               │
-  │  Expose une API WebDriver/Appium compatible   │
-  │  pour interagir avec les éléments UI Windows  │
-  └────────────────────┬──────────────────────────┘
-                       │  HTTP / JSON Wire Protocol
-                       ▼
-  ┌───────────────────────────────────────────────┐
-  │         Robot Framework + DesktopLibrary      │
-  │                                               │
-  │  Mots-clés : Open Application, Click Element  │
-  │  Input Text, Get Text, Select From ComboBox   │
-  │  Wait Until Element Is Visible, Close App...  │
-  └───────────────────────────────────────────────┘
+          ├── keyword_driven.robot    ← tests structurés par mots-clés
+          ├── data_driven.robot       ← même test, données multiples
+          ├── gherkin.robot           ← BDD Given/When/Then
+          └── CalculatorLibrary.py    ← bibliothèque de mots-clés custom
 ```
 
 ---
 
-## Identifier les éléments UI — Accessibility Insights
+## Approche 1 : Keyword-Driven
 
-Avant d'écrire un test, il faut trouver les locators des éléments.
-**Accessibility Insights** (outil Microsoft gratuit) inspecte chaque contrôle :
-
-```
-  Élément : Bouton "Enregistrer"
-  ─────────────────────────────────────────────
-  AutomationId  : btn_save          ← le plus stable
-  Name          : Enregistrer       ← peut changer si i18n
-  ClassName     : Button
-  XPath         : //Button[@AutomationId='btn_save']
-  ─────────────────────────────────────────────
-  Stratégie recommandée : AutomationId > Name > XPath
-```
-
----
-
-## Suite de tests Robot Framework — application desktop .NET
+Chaque action métier est encapsulée dans un mot-clé réutilisable.
 
 ```robotframework
 *** Settings ***
-Library     AppiumLibrary
-Library     DesktopLibrary
-Suite Setup     Start WinAppDriver
-Suite Teardown  Stop WinAppDriver
-
-*** Variables ***
-${APP_PATH}     C:\\Program Files\\MonApp\\MonApp.exe
-${REMOTE_URL}   http://127.0.0.1:4723
+Library    CalculatorLibrary
 
 *** Test Cases ***
+Addition Should Work
+    [Documentation]    Vérifie que l'addition de deux entiers est correcte
+    Push Button    1
+    Push Button    +
+    Push Button    2
+    Push Button    =
+    Result Should Be    3
 
-Ouverture de l application
-    [Documentation]    Vérifie que l'application démarre et affiche l'écran principal
-    Open Application    ${REMOTE_URL}
-    ...    app=${APP_PATH}
-    ...    platformName=Windows
-    ...    deviceName=WindowsPC
-    Wait Until Element Is Visible    accessibility_id=main_window    timeout=10s
-    Element Should Be Visible        accessibility_id=menu_bar
-
-Login avec identifiants valides
-    [Documentation]    Vérifie le flux de connexion complet
-    Click Element           accessibility_id=btn_login
-    Input Text              accessibility_id=field_username    admin
-    Input Text              accessibility_id=field_password    secret123
-    Click Element           accessibility_id=btn_submit
-    Wait Until Element Is Visible    accessibility_id=dashboard    timeout=5s
-    Element Text Should Be  accessibility_id=welcome_label    Bienvenue, admin
-
-Saisie dans un formulaire
-    [Documentation]    Teste la saisie et validation d'un formulaire
-    Click Element           accessibility_id=menu_nouveau
-    Select Elements From Menu   accessibility_id=menu_fichier
-    ...                         accessibility_id=menu_nouveau_document
-    Input Text              accessibility_id=field_titre    Test Document
-    Select Element From ComboBox
-    ...    accessibility_id=combo_categorie
-    ...    accessibility_id=item_rapport
-    Click Element           accessibility_id=btn_enregistrer
-    Element Should Be Visible   accessibility_id=notification_succes
-
-Détection d une anomalie — champ obligatoire vide
-    [Documentation]    Vérifie qu'une erreur s'affiche si le champ titre est vide
-    Click Element           accessibility_id=btn_enregistrer
-    Element Should Be Visible   accessibility_id=error_titre_requis
-    Element Text Should Be      accessibility_id=error_titre_requis
-    ...    Le titre est obligatoire
+Division By Zero Should Fail
+    [Documentation]    Vérifie que la division par zéro lève une erreur
+    Push Button    6
+    Push Button    /
+    Push Button    0
+    Push Button    =
+    Should Be Error    Cannot divide by zero
 
 *** Keywords ***
-Start WinAppDriver
-    [Documentation]    Démarre le service WinAppDriver en arrière-plan
-    Start Process    WinAppDriver.exe    cwd=C:\\Program Files (x86)\\Windows Application Driver
-    Sleep    2s    # Attendre que le service soit prêt
-
-Stop WinAppDriver
-    Close All Applications
-    Terminate All Processes
+Result Should Be
+    [Arguments]    ${expected}
+    ${result}=    Get Result
+    Should Be Equal As Numbers    ${result}    ${expected}
 ```
 
 ---
 
-## Sikuli — tests basés sur l'image
+## Approche 2 : Data-Driven
 
-Pour les éléments sans AutomationId accessibles (contrôles tiers, zones graphiques),
-Sikuli localise par reconnaissance d'image :
+Un seul cas de test exécuté avec de multiples jeux de données — idéal pour
+tester des règles métier sur de nombreuses combinaisons.
+
+```robotframework
+*** Settings ***
+Library           CalculatorLibrary
+Test Template     Calculate
+
+*** Test Cases ***       EXPRESSION    EXPECTED
+Addition simple          1 + 2         3
+Addition négative        -1 + -2       -3
+Soustraction             10 - 3        7
+Multiplication           4 * 5         20
+Division entière         10 / 2        5
+Priorité opérateurs      2 + 3 * 4     14
+Grand nombre             999 + 1       1000
+
+*** Keywords ***
+Calculate
+    [Arguments]    ${expression}    ${expected}
+    ${result}=    Evaluate Expression    ${expression}
+    Should Be Equal As Numbers    ${result}    ${expected}
+```
+
+---
+
+## Approche 3 : BDD Gherkin
+
+Collaboration entre équipes techniques et métier — les scénarios sont lisibles
+par tous, pas seulement par les développeurs.
+
+```robotframework
+*** Settings ***
+Library    CalculatorLibrary
+
+*** Test Cases ***
+Addition de deux nombres positifs
+    Given une calculatrice vide
+    When je saisie    2
+    And  je saisie    +
+    And  je saisie    3
+    And  j appuie sur égal
+    Then le résultat doit être    5
+
+Division par zéro est rejetée
+    Given une calculatrice vide
+    When je saisie    5
+    And  je saisie    /
+    And  je saisie    0
+    And  j appuie sur égal
+    Then une erreur doit s afficher    Cannot divide by zero
+
+*** Keywords ***
+une calculatrice vide
+    Reset Calculator
+
+je saisie
+    [Arguments]    ${input}
+    Push Button    ${input}
+
+j appuie sur égal
+    Push Button    =
+
+le résultat doit être
+    [Arguments]    ${expected}
+    ${result}=    Get Result
+    Should Be Equal As Numbers    ${result}    ${expected}
+
+une erreur doit s afficher
+    [Arguments]    ${message}
+    ${error}=    Get Error
+    Should Contain    ${error}    ${message}
+```
+
+---
+
+## Bibliothèque custom Python
 
 ```python
-# custom_library/SikuliKeywords.py
+# CalculatorLibrary.py
 from robot.api.deco import keyword
-import pyautogui
-import cv2
-import numpy as np
 
-class SikuliKeywords:
+class CalculatorLibrary:
+    """Bibliothèque Robot Framework pour tester une calculatrice Python."""
 
-    @keyword("Click Image")
-    def click_image(self, image_path: str, confidence: float = 0.9):
-        """
-        Clique sur l'élément correspondant à l'image fournie.
-        Utile pour les contrôles sans AutomationId.
-        """
-        location = pyautogui.locateOnScreen(image_path, confidence=confidence)
-        if location is None:
-            raise AssertionError(f"Image non trouvée : {image_path}")
-        center = pyautogui.center(location)
-        pyautogui.click(center)
+    def __init__(self):
+        self._calc = Calculator()
 
-    @keyword("Image Should Be Visible")
-    def image_should_be_visible(self, image_path: str):
-        """Vérifie qu'un élément visuel est présent à l'écran."""
-        location = pyautogui.locateOnScreen(image_path, confidence=0.85)
-        if location is None:
-            raise AssertionError(f"Élément visuel absent : {image_path}")
+    @keyword("Push Button")
+    def push_button(self, button: str):
+        """Simule l'appui sur un bouton de la calculatrice."""
+        self._calc.push(button)
+
+    @keyword("Get Result")
+    def get_result(self) -> float:
+        """Retourne le résultat affiché."""
+        return self._calc.result
+
+    @keyword("Reset Calculator")
+    def reset(self):
+        """Remet la calculatrice à zéro."""
+        self._calc.reset()
 ```
 
 ---
 
-## Documentation de cas de test manuel (template)
+## Lancer les tests
 
-```
-ID          : TC-LOGIN-001
-Titre       : Connexion avec identifiants valides
-Module      : Authentification
-Priorité    : HAUTE
-Prérequis   : Application lancée, écran de login affiché
+```bash
+git clone https://github.com/elouafi-abderrahmane-2002/robotframework-demo.git
+cd robotframework-demo
+pip install robotframework
 
-Étapes :
-  1. Saisir "admin" dans le champ Nom d'utilisateur
-  2. Saisir "password123" dans le champ Mot de passe
-  3. Cliquer sur le bouton "Se connecter"
-
-Résultat attendu :
-  - Redirection vers le tableau de bord
-  - Message "Bienvenue, admin" affiché
-  - Aucun message d'erreur visible
-
-Résultat obtenu : [À remplir]
-Statut       : [ ] PASS   [ ] FAIL   [ ] BLOCKED
-Anomalie     : [Numéro si FAIL]
+robot keyword_driven.robot
+robot data_driven.robot
+robot gherkin.robot
+robot --outputdir results .         # tous les tests + rapport HTML
 ```
 
 ---
 
 ## Ce que j'ai appris
 
-La stratégie de localisation des éléments UI est critique pour la stabilité des tests.
-`AutomationId` est le locator le plus robuste — il ne change pas quand l'interface
-est redessinée ou traduite. `Name` casse dès qu'on change le label d'un bouton.
-`XPath` sur des contrôles Windows peut être extrêmement fragile si la hiérarchie
-de l'arbre UI change entre deux versions de l'application.
+L'approche **data-driven** est souvent sous-estimée. Sur un cas comme la calculatrice,
+tester 7 combinaisons avec un seul cas de test (au lieu de 7 tests séparés) divise
+par 7 le code à maintenir. Si la logique du test change, on modifie un seul endroit.
 
-La règle : toujours demander aux développeurs de l'application testée d'ajouter
-des `AutomationId` explicites sur tous les contrôles importants. C'est 5 minutes
-de travail pour eux, et ça évite des heures de maintenance des tests.
+Le **BDD/Gherkin** n'est utile que si les scénarios sont vraiment rédigés avec
+les parties prenantes métier. Si seuls les développeurs les lisent, keyword-driven
+est plus efficace. Le choix dépend de qui valide les tests — pas de la technologie.
 
 ---
 
